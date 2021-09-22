@@ -182,7 +182,7 @@ client.on('interactionCreate', async interaction => {
     //interaction.send("hola")
 });
 */
-client.on('message', (message) => {
+client.on('messageCreate', (message) => {
 	console.log(message.content);
 
     //if message is from bot, the ignore
