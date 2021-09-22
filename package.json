@@ -1,0 +1,24 @@
+{
+  "name": "musicbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "kuffer",
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/opus": "^0.6.0",
+    "@discordjs/rest": "^0.1.0-canary.0",
+    "discord-api-types": "^0.23.1",
+    "discord.js": "^13.1.0",
+    "distube": "^3.0.0-beta.38",
+    "ffmpeg": "^0.0.4",
+    "ffmpeg-static": "^4.4.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "libsodium-wrappers": "^0.7.9",
+    "yt-search": "^2.10.1",
+    "ytdl-core": "^4.9.1"
+  }
+}
