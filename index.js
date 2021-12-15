@@ -1,10 +1,10 @@
 const Discord = require("discord.js");
 const { prefix, token } = require("./config.json");
-const ytdl = require("ytdl-core");
-const yts = require( 'yt-search' )
 const client = new Discord.Client();
-
+const https = require('https');
+var SpotifyWebApi = require('spotify-web-api-node');
 const queue = new Map();
+let device; 
 
 client.once("ready", () => {
   console.log("Ready!");
@@ -18,131 +18,160 @@ client.once("disconnect", () => {
   console.log("Disconnect!");
 });
 
+
 client.on("message", async message => {
+  console.log(message.content)
   if (message.author.bot) return;
-  if (!message.content.startsWith(prefix)){return;};
+  const serverQueue = queue.get(message.guild.id); //get the queue for this guild
+  if (!message.content.startsWith(prefix)){
+    if (message.content.startsWith("https://open.spotify.com/track/")){execute(message, serverQueue);return;} else {return;}
+  };
 
-  const serverQueue = queue.get(message.guild.id);
-
-  if (message.content.startsWith(`${prefix}play`)) {
-    execute(message, serverQueue);
-    return;
+  if (message.content.startsWith(`${prefix}help`)) {
+    message.channel.send("send a spotify track link to queue it. Search and queue new songs with !p <keywords>. See the queue with !mlfq. Skip a song with !skip.");
   } else if (message.content.startsWith(`${prefix}skip`)) {
     skip(message, serverQueue);
     return;
-  } else if (message.content.startsWith(`${prefix}stop`)) {
-    stop(message, serverQueue);
+  } else if (message.content.startsWith(`${prefix}mlfq`)) {
+    serverQueue.mlfq.forEach(element => element.forEach(e => message.channel.send(e.tackid)))
     return;
   } else {
     message.channel.send("Vache Glift?");
   }
 });
 
-async function execute(message, serverQueue) {
-  const args = message.content.split(" ");
-
-  const voiceChannel = message.member.voice.channel;
-  if (!voiceChannel)
-    return message.channel.send(
-      "Du hues keng Moss am Bic"
-    );
-  const permissions = voiceChannel.permissionsFor(message.client.user);
-  if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) {
-    return message.channel.send(
-      "Ech brauch 2 Bullen Mokka"
-    );
-  }
-
-  const search = args.shift();
-let searchString;
-for (let i = 0; i < args.length; i++){
-    searchString = searchString + " " + args[i];
-}
-const r = await yts( searchString );
-const videos = r.videos.slice( 0, 1);
-var url;
-videos.forEach( function ( v ) {
-	const link = String( v.url )
-    //console.log(v);
-	url = link;
-} );
-//only link
-
-const songInfo = await ytdl.getInfo(url);
+async function execute(message, serverQueue){
+  //get track id
+  const args = message.content.split("/");
+  let trackID = args[4].split("?")[0];
+  console.log(trackID);
+  
+  //define track as json obj
   const song = {
-        title: songInfo.videoDetails.title,
-        url: songInfo.videoDetails.video_url,
+        url: message.content,
+        trackid: trackID,
+        author: message.author
    };
-
+  //if the servers queue does not exist, create one with the queue construct blueprint
   if (!serverQueue) {
-    const queueContruct = {
+    const queueConstruct = {
       textChannel: message.channel,
-      voiceChannel: voiceChannel,
-      connection: null,
-      songs: [],
-      volume: 5,
-      playing: true
+      spotify: [/*FIFO Spotify Queue*/],//normal fifo queue
+      mlfq: [[/*Queue highest priority 1*/],[/*Queue priority 2*/],[/*Queue priority 3*/],[/*Queue priority 4*/],[/*Queue lowest priority >5*/]],//if the song to be queued next is not the first one, first swap it until it is, then shift()
+      authors: new Map()
     };
 
-    queue.set(message.guild.id, queueContruct);
-
-    queueContruct.songs.push(song);
-
-    try {
-      var connection = await voiceChannel.join();
-      queueContruct.connection = connection;
-      play(message.guild, queueContruct.songs[0]);
-    } catch (err) {
-      console.log(err);
-      queue.delete(message.guild.id);
-      return message.channel.send(err);
-    }
+    queue.set(message.guild.id, queueConstruct);
+    let priority = 0;
+    queueConstruct.authors.set(message.author, priority)
+    queueConstruct.spotify.push(song);
+    spotify(song);
+    
+  
   } else {
-    serverQueue.songs.push(song);
-    return message.channel.send(`${song.title} leeft dem Ketti mat der Wichsbiischt no`);
+    
+    //increase authors priority or add to queue while decreasing all other authors priorities
+    if(serverQueue.authors.has(message.author)){//possible MutEx
+
+      increasePriority = serverQueue.authors.get(message.author)
+      //increasePriority++;
+      increasePriority++;//double,because foreach will also decrease this by 1
+      serverQueue.authors.set(message.author, increasePriority);
+      console.log("got 2 here");
+      schedule(serverQueue, song)//cannot read property get of undefined
+
+      //decrease all authors prio by 1 lower bound to 0
+      /*serverQueue.authors.forEach((value, key, map) => { 
+        if(value!=0){value--;}
+        
+        map.set(key, value);
+        console.log(map.get(key));
+       } );*/
+    } else {
+      serverQueue.authors.set(message.author, 0);
+      serverQueue.spotify.push(song);
+      spotify(song);
+    }
   }
+}
+
+function findLowestPriority(serverQueue){
+  let authorsInMlfq = [];
+  serverQueue.mlfq.forEach((element) => { 
+    authorsInMlfq.push(element.author);
+  } )
+  let priority = 1000000000;
+  serverQueue.authors.forEach((value, key) => { 
+    if(authorsInMlfq.forEach((e) => {if(e == key){return true}})){ //do not know if foreach in if statement will work
+      if(value < priority){
+        priority = value
+      }
+    }
+  } );
+  return priority;//it might occur that no one with that priority is in the queue, solution, only test the priorities of people in the given mlfq
 }
 
 function skip(message, serverQueue) {
-  if (!message.member.voice.channel)
-    return message.channel.send(
-      "Du hues keng Moss am Bic"
-    );
-  if (!serverQueue)
-    return message.channel.send("Keen Chachacha am Pijama");
-  serverQueue.connection.dispatcher.end();
+ //TODO
 }
 
-function stop(message, serverQueue) {
-  if (!message.member.voice.channel)
-    return message.channel.send(
-      "Du hues keng Moss am Bic"
-    );
-    
-  if (!serverQueue)
-    return message.channel.send("Keen Chachacha am Pijama");
-    
-  serverQueue.songs = [];
-  serverQueue.connection.dispatcher.end();
+function deviceID(message, serverQueue) {
+  const args = message.content.split(" ");
+  device = args[1];
+  console.log(device);
+  message.channel.send(`You set the new device to the following ${device}`);
 }
 
-function play(guild, song) {
-  const serverQueue = queue.get(guild.id);
+function schedule(serverQueue, song) {
+  /*let priority = findLowestPriority(serverQueue);let index = serverQueue.mlfq.findIndex((e, ind, arr) => {serverQueue.authors.get(e) == priority;});let elem = serverQueue.mlfq[index];
+    for(let i = index; i>0; i--){serverQueue.mlfq[i] = serverQueue.mlfq[i-1];serverQueue.mlfq[i-1] = elem;}serverQueue.mlfq.shift();play(serverQueue, elem);*/
+  
+   //shift queue by 1 (shift)
+   serverQueue.mlfq.forEach(
+    (arr, index, queue) => { 
+      if(arr.length!=0){
+      if(index==0){
+        
+        spotify(arr[0]);
+        arr.shift();
+      } else {
+        queue[index-1].push(arr[0]);
+        arr.shift();
+      } }
+    }
+   );
+  //place song in queue (push)
+  if(serverQueue.authors.get(song.author)>=5){
+    console.log("unlucky");
+    serverQueue.mlfq[4].push(song)
+    console.log(serverQueue.mlfq)
+  }  else {
+    console.log("better")
+    serverQueue.mlfq[serverQueue.authors.get(song.author)-1].push(song)
+    console.log(serverQueue.mlfq)
+    //cannot read property get of undefined
+  }
+}
+
+function play(serverQueue, song) {
+  
   if (!song) {
-    serverQueue.voiceChannel.leave();
-    queue.delete(guild.id);
+    //No more song to queue
     return;
   }
+}
 
-  const dispatcher = serverQueue.connection
-    .play(ytdl(song.url))
-    .on("finish", () => {
-      serverQueue.songs.shift();
-      play(guild, serverQueue.songs[0]);
-    })
-    .on("error", error => console.error(error));
-  dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
-  serverQueue.textChannel.send(`'t As Kiirmes Am Duerf mat: **${song.title}**`);
+function endOfQueue(serverQueue){
+  if(currentlyPlaying()==serverQueue.spotify.pop().tackid){return true} else return false;
+}
+
+function currentlyPlaying(/* return track id */){}
+
+function spotify(song) {
+  //place the song in the spotify queue
+  if(!song){return;}
+  let header = "Accept: application/json Content-Type: application/json Authorization: Bearer BQA2qbCSWfjVIPQAZGmZVnj_mAUInvVzSVrF2rqS4AnYsva4AHzhvm55MmL1L5vn76FVYEsB2k2W2DC-5SYl4OKR7ufaV1mGElO6q52dcjwYMHPGomPjYM6qpXWVREB0_u0kLgsPmr1aBGg-mlGUFezX7swX1SmfNiVZkzLScPnLP9E80zYfgrsxmANz3j9gkXg08IQlR68I5HZy6uUk5ekEbix85DpxNiDMc2ysLiRd3VSr"
+  let request = `https://api.spotify.com/v1/me/player/queue?uri=spotify%3Atrack%3A${song.tackid}&device_id=${device}`
 }
 
 client.login(token);
