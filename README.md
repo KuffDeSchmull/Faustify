@@ -1,7 +1,4 @@
-# fausti-bot
-**Warning** Although version 16 is needed for discord.js v13, this version will break the ytdl-core lib.
-
-Currently work is being done to push a version for NodeJS 14 and DiscordJS 12, not all migrations are ready yet. You can try and run index16.js with the discordjs version in package.json set to 13.1.0 and NodeJS 16, but eventually your connection will break.
+# faustify
 
 Before you start, you need to set a command prefix and your discord bot token in the config.json
 #### config.json
@@ -9,7 +6,8 @@ Before you start, you need to set a command prefix and your discord bot token in
 {
     "prefix": "!",
     "token": "your-token",
-    "yt-api": ""
+    "yt-api": "",
+    "oauth":
 }
 
 ```
